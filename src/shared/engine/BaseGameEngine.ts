@@ -610,6 +610,8 @@ export abstract class BaseGameEngine<
       this.joinRoomAsGuest(saved.lastRoomCode);
     }
   };
+
+  public joinRoomAsGuest = (roomCode: string): void => {
     const cleanCode = roomCode.trim().toUpperCase();
     if (!cleanCode) return;
 
