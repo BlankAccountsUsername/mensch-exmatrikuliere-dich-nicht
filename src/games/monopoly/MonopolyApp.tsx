@@ -13,7 +13,7 @@ import { TileDetailModal } from './components/TileDetailModal';
 import { TradeModal } from './components/TradeModal';
 import { WinnerModal } from './components/WinnerModal';
 import { MonopolyEngine } from './game/MonopolyEngine';
-import type { PlayerConfig } from './game/types';
+import type { PlayerConfig, TradeOffer } from './game/types';
 import { TRANSLATIONS } from './i18n/translations';
 
 export function MonopolyApp({
@@ -23,9 +23,10 @@ export function MonopolyApp({
   onToggleMute,
   onBackToGames,
 }: GameComponentProps) {
-  const [showProperties, setShowProperties] = useState(false);
+  const [inspectedPlayerIndex, setInspectedPlayerIndex] = useState<number | null>(null);
   const [selectedTileIndex, setSelectedTileIndex] = useState<number | null>(null);
   const [showTrade, setShowTrade] = useState(false);
+  const [tradeInitialOffer, setTradeInitialOffer] = useState<TradeOffer | null>(null);
   const [showConnectionInfo, setShowConnectionInfo] = useState(false);
 
   const { engine, snapshot: mp } = useGameEngine(() => new MonopolyEngine());
@@ -49,7 +50,7 @@ export function MonopolyApp({
       if (e.code !== 'Space' || e.repeat) return;
       const tag = (e.target as HTMLElement | null)?.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || tag === 'BUTTON') return;
-      if (showProperties || selectedTileIndex !== null || showTrade || showConnectionInfo) return;
+      if (inspectedPlayerIndex !== null || selectedTileIndex !== null || showTrade || showConnectionInfo) return;
       if (!canActCurrentTurn) return;
 
       if (state.phase === 'WAIT_ROLL') {
@@ -60,12 +61,12 @@ export function MonopolyApp({
         engine.dispatchAction({ type: 'ACK_CARD' });
       } else if (state.phase === 'TURN_ACTION') {
         e.preventDefault();
-        engine.dispatchAction({ type: 'END_TURN' });
+        engine.dispatchAction({ type: state.canRollAgain ? 'ROLL_AGAIN' : 'END_TURN' });
       }
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [state, canActCurrentTurn, showProperties, selectedTileIndex, showTrade, showConnectionInfo, engine]);
+  }, [state, canActCurrentTurn, inspectedPlayerIndex, selectedTileIndex, showTrade, showConnectionInfo, engine]);
 
   if (!state) {
     const t = TRANSLATIONS[language];
@@ -129,19 +130,44 @@ export function MonopolyApp({
           onSelectTile={(tileIdx) => setSelectedTileIndex(tileIdx)}
         />
 
-        <ActionDock
-          state={state}
-          language={language}
-          canAct={canActCurrentTurn}
-          muted={muted}
-          onAction={engine.dispatchAction}
-          onOpenProperties={() => setShowProperties(true)}
-          onOpenTrade={() => setShowTrade(true)}
-          onOpenConnectionInfo={() => setShowConnectionInfo(true)}
-          onToggleMute={onToggleMute}
-          onToggleLanguage={onToggleLanguage}
-          onReturnToLobby={engine.returnToLobby}
-        />
+        {showTrade || state.phase === 'TRADE_REVIEW' ? (
+          <TradeModal
+            key={tradeInitialOffer ? `rework-${state.turnCount}` : state.phase === 'TRADE_REVIEW' ? 'review' : 'new'}
+            state={state}
+            language={language}
+            localSeatIndices={localSeatIndices}
+            isOpen={showTrade}
+            initialOffer={tradeInitialOffer}
+            onAction={engine.dispatchAction}
+            onClose={() => {
+              setShowTrade(false);
+              setTradeInitialOffer(null);
+            }}
+          />
+        ) : (
+          <ActionDock
+            state={state}
+            language={language}
+            canAct={canActCurrentTurn}
+            localSeatIndices={localSeatIndices}
+            muted={muted}
+            onAction={engine.dispatchAction}
+            onOpenProperties={() => setInspectedPlayerIndex(state.currentTurn)}
+            onOpenPropertiesForPlayer={(idx) => setInspectedPlayerIndex(idx)}
+            onOpenTrade={() => {
+              setTradeInitialOffer(null);
+              setShowTrade(true);
+            }}
+            onReworkTrade={() => {
+              setTradeInitialOffer(state.lastDeclinedTrade ?? null);
+              setShowTrade(true);
+            }}
+            onOpenConnectionInfo={() => setShowConnectionInfo(true)}
+            onToggleMute={onToggleMute}
+            onToggleLanguage={onToggleLanguage}
+            onReturnToLobby={engine.returnToLobby}
+          />
+        )}
       </div>
 
       <TileActionModal
@@ -169,24 +195,14 @@ export function MonopolyApp({
         />
       )}
 
-      {showProperties && (
+      {inspectedPlayerIndex !== null && (
         <PropertyManagerModal
           state={state}
           language={language}
           canAct={canActCurrentTurn}
+          initialPlayerIndex={inspectedPlayerIndex}
           onAction={engine.dispatchAction}
-          onClose={() => setShowProperties(false)}
-        />
-      )}
-
-      {(showTrade || state.phase === 'TRADE_REVIEW') && (
-        <TradeModal
-          state={state}
-          language={language}
-          localSeatIndices={localSeatIndices}
-          isOpen={showTrade}
-          onAction={engine.dispatchAction}
-          onClose={() => setShowTrade(false)}
+          onClose={() => setInspectedPlayerIndex(null)}
         />
       )}
 

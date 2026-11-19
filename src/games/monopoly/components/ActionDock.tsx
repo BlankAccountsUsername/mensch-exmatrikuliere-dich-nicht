@@ -10,10 +10,13 @@ interface ActionDockProps {
   state: GameState;
   language: Language;
   canAct: boolean;
+  localSeatIndices: number[];
   muted: boolean;
   onAction: (action: GameAction) => void;
   onOpenProperties: () => void;
+  onOpenPropertiesForPlayer: (playerIndex: number) => void;
   onOpenTrade: () => void;
+  onReworkTrade: () => void;
   onOpenConnectionInfo: () => void;
   onToggleMute: () => void;
   onToggleLanguage: () => void;
@@ -24,10 +27,13 @@ export const ActionDock: React.FC<ActionDockProps> = ({
   state,
   language,
   canAct,
+  localSeatIndices,
   muted,
   onAction,
   onOpenProperties,
+  onOpenPropertiesForPlayer,
   onOpenTrade,
+  onReworkTrade,
   onOpenConnectionInfo,
   onToggleMute,
   onToggleLanguage,
@@ -141,7 +147,7 @@ export const ActionDock: React.FC<ActionDockProps> = ({
               type="button"
               className="tactile-btn primary"
               disabled={!canAct}
-              onClick={() => onAction({ type: 'END_TURN' })}
+              onClick={() => onAction({ type: state.canRollAgain ? 'ROLL_AGAIN' : 'END_TURN' })}
               style={{ width: '100%' }}
             >
               {state.canRollAgain
@@ -183,6 +189,26 @@ export const ActionDock: React.FC<ActionDockProps> = ({
               🤝 {t.proposeTrade}
             </button>
           </div>
+
+          {canAct &&
+            state.lastDeclinedTrade &&
+            state.lastDeclinedTrade.fromIndex === state.currentTurn &&
+            (state.phase === 'TURN_ACTION' || state.phase === 'WAIT_ROLL') && (
+              <button
+                type="button"
+                className="tactile-btn"
+                onClick={onReworkTrade}
+                style={{
+                  width: '100%',
+                  fontSize: '0.8rem',
+                  padding: '6px 10px',
+                  background: '#fdf8ec',
+                  borderColor: 'var(--ink)',
+                }}
+              >
+                ✏️ {language === 'de' ? 'Abgelehntes Angebot bearbeiten' : 'Edit & Resend Declined Offer'}
+              </button>
+            )}
         </div>
       </div>
 
@@ -192,9 +218,15 @@ export const ActionDock: React.FC<ActionDockProps> = ({
           const isTurn = p.index === state.currentTurn && state.phase !== 'GAME_OVER';
           const netWorth = getPlayerNetWorth(state, p.index);
           return (
-            <div
+            <button
               key={p.color}
+              type="button"
+              onClick={() => onOpenPropertiesForPlayer(p.index)}
+              title={language === 'de' ? 'Grundstücke & Details anzeigen' : 'Inspect properties & details'}
               style={{
+                width: '100%',
+                textAlign: 'left',
+                cursor: 'pointer',
                 padding: '7px 10px',
                 borderRadius: '8px',
                 border: `2px solid ${isTurn ? COLOR_HEX[p.color] : '#e2d5be'}`,
@@ -228,7 +260,7 @@ export const ActionDock: React.FC<ActionDockProps> = ({
               >
                 {p.bankrupt ? 'EXMAT.' : `${p.cash} €`}
               </div>
-            </div>
+            </button>
           );
         })}
       </div>
@@ -257,31 +289,38 @@ export const ActionDock: React.FC<ActionDockProps> = ({
             lineHeight: 1.35,
           }}
         >
-          {[...state.logs].reverse().map((entry) => (
-            <div
-              key={entry.id}
-              style={{
-                padding: '4px 6px',
-                borderRadius: '5px',
-                background:
-                  entry.tone === 'bad'
-                    ? '#fdf2f0'
-                    : entry.tone === 'good'
-                      ? '#f2f9f4'
-                      : entry.tone === 'highlight'
-                        ? '#fdf8ec'
-                        : 'transparent',
-                color:
-                  entry.tone === 'bad'
-                    ? 'var(--stamp-red)'
-                    : entry.tone === 'good'
-                      ? 'var(--stamp-green)'
-                      : 'var(--ink)',
-              }}
-            >
-              {entry.text[language]}
-            </div>
-          ))}
+          {[...state.logs].reverse().map((entry) => {
+            const viewerIdx = localSeatIndices.length === 1 ? localSeatIndices[0] : null;
+            const resolvedTone =
+              viewerIdx !== null && entry.playerTones?.[viewerIdx]
+                ? entry.playerTones[viewerIdx]
+                : entry.tone;
+            return (
+              <div
+                key={entry.id}
+                style={{
+                  padding: '4px 6px',
+                  borderRadius: '5px',
+                  background:
+                    resolvedTone === 'bad'
+                      ? '#fdf2f0'
+                      : resolvedTone === 'good'
+                        ? '#f2f9f4'
+                        : resolvedTone === 'highlight'
+                          ? '#fdf8ec'
+                          : 'transparent',
+                  color:
+                    resolvedTone === 'bad'
+                      ? 'var(--stamp-red)'
+                      : resolvedTone === 'good'
+                        ? 'var(--stamp-green)'
+                        : 'var(--ink)',
+                }}
+              >
+                {entry.text[language]}
+              </div>
+            );
+          })}
         </div>
       </div>
     </div>

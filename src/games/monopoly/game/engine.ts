@@ -80,17 +80,72 @@ export function createInitialState(
   let nextLogId = 1;
 
   if (settings.turboStart && players.length > 0) {
-    const ownableIndices = shuffleIds(
-      BOARD_TILES.filter((t) => isOwnableTile(t)).map((t) => String(t.index)),
+    const sortedOwnable = [...BOARD_TILES]
+      .filter((t) => isOwnableTile(t))
+      .sort((a, b) => (a.price ?? 0) - (b.price ?? 0));
+    const mid = Math.floor(sortedOwnable.length / 2);
+    const lowerIds = shuffleIds(
+      sortedOwnable.slice(0, mid).map((t) => String(t.index)),
+      rng
+    ).map(Number);
+    const higherIds = shuffleIds(
+      sortedOwnable.slice(mid).map((t) => String(t.index)),
       rng
     ).map(Number);
 
-    let cursor = 0;
-    for (const p of players) {
+    // Pair 1 lower-tier + 1 higher-tier per player, avoiding same-group pairs and balancing total value
+    const pairs: [number, number][] = [];
+    for (let i = 0; i < players.length && i < lowerIds.length && i < higherIds.length; i++) {
+      const lowIdx = lowerIds[i];
+      const lowTile = BOARD_TILES[lowIdx];
+      let highPos = i;
+      if (lowTile.group && BOARD_TILES[higherIds[highPos]].group === lowTile.group) {
+        const swapPos = higherIds.findIndex(
+          (id, idx) => idx >= players.length && BOARD_TILES[id].group !== lowTile.group
+        );
+        if (swapPos !== -1) {
+          [higherIds[highPos], higherIds[swapPos]] = [higherIds[swapPos], higherIds[highPos]];
+        }
+      }
+      pairs.push([lowIdx, higherIds[highPos]]);
+    }
+
+    // Balance total dealt value across players by swapping within higherIds if needed
+    const pairValue = ([a, b]: [number, number]) =>
+      (BOARD_TILES[a].price ?? 0) + (BOARD_TILES[b].price ?? 0);
+    for (let iter = 0; iter < 12 && pairs.length > 1; iter++) {
+      let minI = 0;
+      let maxI = 0;
+      for (let i = 1; i < pairs.length; i++) {
+        if (pairValue(pairs[i]) < pairValue(pairs[minI])) minI = i;
+        if (pairValue(pairs[i]) > pairValue(pairs[maxI])) maxI = i;
+      }
+      if (pairValue(pairs[maxI]) - pairValue(pairs[minI]) <= 80) break;
+      const [lowMin, highMin] = pairs[minI];
+      const [lowMax, highMax] = pairs[maxI];
+      if (
+        BOARD_TILES[lowMin].group !== BOARD_TILES[highMax].group &&
+        BOARD_TILES[lowMax].group !== BOARD_TILES[highMin].group &&
+        Math.abs(
+          (BOARD_TILES[lowMin].price ?? 0) +
+            (BOARD_TILES[highMax].price ?? 0) -
+            ((BOARD_TILES[lowMax].price ?? 0) + (BOARD_TILES[highMin].price ?? 0))
+        ) <
+          pairValue(pairs[maxI]) - pairValue(pairs[minI])
+      ) {
+        pairs[minI] = [lowMin, highMax];
+        pairs[maxI] = [lowMax, highMin];
+      } else {
+        break;
+      }
+    }
+
+    for (let i = 0; i < players.length; i++) {
+      const p = players[i];
+      const dealt = pairs[i] ?? [];
       const dealtNamesDe: string[] = [];
       const dealtNamesEn: string[] = [];
-      for (let k = 0; k < 2 && cursor < ownableIndices.length; k++) {
-        const tileIdx = ownableIndices[cursor++];
+      for (const tileIdx of dealt) {
         properties[tileIdx] = { ...properties[tileIdx], ownerIndex: p.index };
         dealtNamesDe.push(BOARD_TILES[tileIdx].name.de);
         dealtNamesEn.push(BOARD_TILES[tileIdx].name.en);
@@ -300,8 +355,17 @@ export function redeemJailCard(state: GameState): GameState {
   const player = state.players[playerIdx];
   if (!player || !player.inJail || player.jailCards <= 0) return state;
 
+  const heldDecks = [...(player.jailCardDecks ?? [])];
+  const returnedDeck = heldDecks.shift() ?? 'chance';
+  const chanceDeck =
+    returnedDeck === 'chance' ? [...state.chanceDeck, 'ch_jail_card'] : state.chanceDeck;
+  const chestDeck =
+    returnedDeck === 'chest' ? [...state.chestDeck, 'cc_jail_card'] : state.chestDeck;
+
   const players = state.players.map((p, i) =>
-    i === playerIdx ? { ...p, inJail: false, jailTurns: 0, jailCards: p.jailCards - 1 } : p
+    i === playerIdx
+      ? { ...p, inJail: false, jailTurns: 0, jailCards: p.jailCards - 1, jailCardDecks: heldDecks }
+      : p
   );
   const log = appendLog(
     state.logs,
@@ -313,7 +377,7 @@ export function redeemJailCard(state: GameState): GameState {
     playerIdx,
     'good'
   );
-  return { ...state, players, logs: log.logs, nextLogId: log.nextLogId };
+  return { ...state, players, chanceDeck, chestDeck, logs: log.logs, nextLogId: log.nextLogId };
 }
 
 export function buyProperty(state: GameState): GameState {
@@ -442,7 +506,7 @@ export function buildHouse(state: GameState, tileIndex: number): GameState {
       en: `${players[playerIdx].name} builds ${labelEn} on ${tile.name.en} (-${cost} €).`,
     },
     playerIdx,
-    'good'
+    'bad'
   );
 
   return { ...state, players, properties, logs: log.logs, nextLogId: log.nextLogId };
@@ -470,6 +534,16 @@ export function sellHouse(state: GameState, tileIndex: number): GameState {
     state.phase === 'DEBT_RECOVERY' && players[playerIdx].cash >= 0
       ? 'TURN_ACTION'
       : state.phase;
+  const log = appendLog(
+    state.logs,
+    state.nextLogId,
+    {
+      de: `${players[playerIdx].name} verkauft ein Gebäude auf ${tile.name.de} (+${refund} €).`,
+      en: `${players[playerIdx].name} sells a building on ${tile.name.en} (+${refund} €).`,
+    },
+    playerIdx,
+    'good'
+  );
 
   return {
     ...state,
@@ -477,6 +551,8 @@ export function sellHouse(state: GameState, tileIndex: number): GameState {
     properties,
     phase: nextPhase,
     debtCreditorIndex: nextPhase === 'TURN_ACTION' ? null : state.debtCreditorIndex,
+    logs: log.logs,
+    nextLogId: log.nextLogId,
   };
 }
 
@@ -526,6 +602,7 @@ export function proposeTrade(state: GameState, offer: TradeOffer): GameState {
   return {
     ...state,
     pendingTrade: offer,
+    lastDeclinedTrade: null,
     preTradePhase: state.phase,
     phase: 'TRADE_REVIEW',
     ...(proposerIsBot ? { botTradeAttemptedTurn: state.turnCount } : {}),
@@ -535,9 +612,10 @@ export function proposeTrade(state: GameState, offer: TradeOffer): GameState {
 export function respondTrade(state: GameState, accept: boolean): GameState {
   if (state.phase !== 'TRADE_REVIEW' || !state.pendingTrade) return state;
   if (!accept) {
-    const fromName = state.players[state.pendingTrade.fromIndex]?.name ?? '';
-    const toName = state.players[state.pendingTrade.toIndex]?.name ?? '';
-    const key = getCanonicalTradeKey(state.pendingTrade);
+    const declinedOffer = state.pendingTrade;
+    const fromName = state.players[declinedOffer.fromIndex]?.name ?? '';
+    const toName = state.players[declinedOffer.toIndex]?.name ?? '';
+    const key = getCanonicalTradeKey(declinedOffer);
     const prevDeclined = state.declinedTradeKeys ?? [];
     const declinedTradeKeys = prevDeclined.includes(key) ? prevDeclined : [...prevDeclined, key];
     const log = appendLog(
@@ -547,12 +625,13 @@ export function respondTrade(state: GameState, accept: boolean): GameState {
         de: `${toName} lehnt das Tauschangebot von ${fromName} ab.`,
         en: `${toName} declines ${fromName}'s trade offer.`,
       },
-      state.pendingTrade.toIndex,
+      declinedOffer.toIndex,
       'neutral'
     );
     return {
       ...state,
       pendingTrade: null,
+      lastDeclinedTrade: declinedOffer,
       preTradePhase: undefined,
       phase: state.preTradePhase ?? 'TURN_ACTION',
       declinedTradeKeys,
@@ -570,13 +649,24 @@ export function declareBankruptcy(state: GameState): GameState {
   if (!player || player.bankrupt) return state;
 
   const creditorIdx = state.debtCreditorIndex;
+  const heldDecks = player.jailCardDecks ?? [];
+  let chanceDeck = state.chanceDeck;
+  let chestDeck = state.chestDeck;
+  if (creditorIdx === null && player.jailCards > 0) {
+    const decksToReturn = heldDecks.length > 0 ? heldDecks : Array(player.jailCards).fill('chance');
+    for (const d of decksToReturn) {
+      if (d === 'chest') chestDeck = [...chestDeck, 'cc_jail_card'];
+      else chanceDeck = [...chanceDeck, 'ch_jail_card'];
+    }
+  }
   const players = state.players.map((p, i) => {
-    if (i === playerIdx) return { ...p, cash: 0, jailCards: 0, bankrupt: true };
+    if (i === playerIdx) return { ...p, cash: 0, jailCards: 0, jailCardDecks: [], bankrupt: true };
     if (creditorIdx !== null && i === creditorIdx) {
       return {
         ...p,
         cash: p.cash + Math.max(0, player.cash),
         jailCards: p.jailCards + player.jailCards,
+        jailCardDecks: [...(p.jailCardDecks ?? []), ...heldDecks],
       };
     }
     return p;
@@ -609,6 +699,8 @@ export function declareBankruptcy(state: GameState): GameState {
     ...state,
     players,
     properties,
+    chanceDeck,
+    chestDeck,
     debtCreditorIndex: null,
     canRollAgain: false,
     doublesCount: 0,
@@ -645,8 +737,17 @@ export function endTurn(state: GameState): GameState {
     doublesCount: 0,
     canRollAgain: false,
     pendingTileIndex: null,
+    lastDeclinedTrade: null,
     turnCount: state.turnCount + 1,
   };
+}
+
+export function rollAgain(state: GameState, rng: RngFn = Math.random): GameState {
+  if (state.phase !== 'TURN_ACTION' || !state.canRollAgain) return state;
+  const player = state.players[state.currentTurn];
+  if (!player || player.inJail || player.bankrupt) return state;
+  if (player.cash < 0) return { ...state, phase: 'DEBT_RECOVERY' };
+  return rollDice({ ...state, phase: 'WAIT_ROLL', canRollAgain: false }, rng);
 }
 
 export function applyGameAction(
@@ -685,6 +786,8 @@ export function applyGameAction(
       return declareBankruptcy(state);
     case 'END_TURN':
       return endTurn(state);
+    case 'ROLL_AGAIN':
+      return rollAgain(state, rng);
   }
 }
 

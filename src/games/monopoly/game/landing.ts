@@ -83,8 +83,17 @@ export function drawCardFromDeck(
   const sourceCards = deck === 'chance' ? CHANCE_CARDS : CHEST_CARDS;
   let queue = [...state[deckKey]];
   if (queue.length === 0) {
+    const heldFromThisDeck = state.players.reduce((acc, p) => {
+      if (p.bankrupt) return acc;
+      const decks = p.jailCardDecks ?? [];
+      return acc + decks.filter((d) => d === deck).length;
+    }, 0);
+    const availableCards =
+      heldFromThisDeck > 0
+        ? sourceCards.filter((c) => c.effect.kind !== 'jail_card')
+        : sourceCards;
     queue = shuffleIds(
-      sourceCards.map((c) => c.id),
+      availableCards.map((c) => c.id),
       rng
     );
   }
@@ -270,7 +279,8 @@ export function resolveLanding(
         en: `${player.name} pays ${rent} € rent to ${owner.name} (${tile.name.en}).`,
       },
       playerIdx,
-      'bad'
+      'bad',
+      { [playerIdx]: 'bad', [prop.ownerIndex]: 'good' }
     );
     return {
       ...next,

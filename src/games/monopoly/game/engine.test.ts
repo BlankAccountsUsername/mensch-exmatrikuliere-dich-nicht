@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { BOARD_TILES, JAIL_TILE_INDEX, STARTING_CASH } from './boardData';
 import { decideBotAction } from './bot';
 import {
+  acknowledgeCard,
+  applyGameAction,
   buildHouse,
   buyProperty,
   createInitialState,
@@ -11,11 +13,14 @@ import {
   passBid,
   placeBid,
   proposeTrade,
+  redeemJailCard,
   respondTrade,
   rollDice,
   sellHouse,
   toggleMortgage,
 } from './engine';
+import { CARD_BY_ID } from './cardsData';
+import { drawCardFromDeck, resolveLanding } from './landing';
 import { calculateRent, canBuildOnTile } from './helpers';
 import type { PlayerConfig } from './types';
 
@@ -257,5 +262,133 @@ describe('Campus Monopoly Engine', () => {
 
     const endAct = decideBotAction(state, 1);
     expect(endAct).toEqual({ type: 'END_TURN' });
+  });
+
+  it('balances turbo-start property values and avoids starting monopolies (#9)', () => {
+    const turbo = createInitialState(
+      TEST_PLAYERS,
+      { turboStart: true },
+      makeSeqRng([0.1, 0.2, 0.3, 0.4, 0.5, 0.6])
+    );
+    const totals = TEST_PLAYERS.map((_, i) => {
+      const owned = Object.entries(turbo.properties)
+        .filter(([, p]) => p.ownerIndex === i)
+        .map(([idx]) => BOARD_TILES[Number(idx)]);
+      expect(owned).toHaveLength(2);
+      if (owned[0].group && owned[1].group) {
+        expect(owned[0].group).not.toBe(owned[1].group);
+      }
+      return owned.reduce((sum, t) => sum + (t.price ?? 0), 0);
+    });
+    expect(Math.max(...totals) - Math.min(...totals)).toBeLessThanOrEqual(120);
+  });
+
+  it('excludes held jail cards on deck reshuffle and returns them when used (#8)', () => {
+    let state = createInitialState(TEST_PLAYERS);
+    state = {
+      ...state,
+      chanceDeck: ['ch_jail_card'],
+      phase: 'TURN_ACTION',
+    };
+    state = drawCardFromDeck(state, 'chance');
+    expect(state.phase).toBe('CARD_MODAL');
+    state = acknowledgeCard(state);
+    expect(state.players[0].jailCards).toBe(1);
+    expect(state.players[0].jailCardDecks).toEqual(['chance']);
+    expect(state.chanceDeck).toEqual([]);
+
+    // Next draw reshuffles empty chanceDeck but must exclude ch_jail_card while held
+    state = drawCardFromDeck(state, 'chance');
+    expect(state.drawnCard?.id).not.toBe('ch_jail_card');
+    expect(state.chanceDeck).not.toContain('ch_jail_card');
+
+    // Using the jail card returns ch_jail_card to the bottom of chanceDeck
+    state = {
+      ...state,
+      drawnCard: null,
+      phase: 'WAIT_ROLL',
+      players: state.players.map((p, i) => (i === 0 ? { ...p, inJail: true, jailTurns: 1 } : p)),
+    };
+    state = redeemJailCard(state);
+    expect(state.players[0].inJail).toBe(false);
+    expect(state.players[0].jailCards).toBe(0);
+    expect(state.chanceDeck[state.chanceDeck.length - 1]).toBe('ch_jail_card');
+  });
+
+  it('rolls immediately on ROLL_AGAIN after doubles (#5)', () => {
+    let state = createInitialState(TEST_PLAYERS);
+    state = rollDice(state, makeSeqRng([0.2, 0.2])); // 2+2 = 4 (doubles)
+    expect(state.canRollAgain).toBe(true);
+    expect(state.phase).toBe('TURN_ACTION');
+
+    // 1-click ROLL_AGAIN rolls immediately without requiring WAIT_ROLL intermediate click
+    state = applyGameAction(state, { type: 'ROLL_AGAIN' }, makeSeqRng([0.0, 0.5])); // 1+4 = 5
+    expect(state.lastDice).toEqual([1, 4]);
+    expect(state.players[0].position).toBe(9);
+  });
+
+  it('logs accurate house, rent, and action-card tones and details (#3)', () => {
+    let state = createInitialState(TEST_PLAYERS);
+    state = {
+      ...state,
+      phase: 'TURN_ACTION',
+      properties: {
+        ...state.properties,
+        1: { ownerIndex: 0, houses: 0, mortgaged: false },
+        3: { ownerIndex: 0, houses: 0, mortgaged: false },
+        6: { ownerIndex: 1, houses: 0, mortgaged: false },
+      },
+    };
+
+    state = buildHouse(state, 1);
+    expect(state.logs[state.logs.length - 1].tone).toBe('bad');
+
+    state = sellHouse(state, 1);
+    expect(state.logs[state.logs.length - 1].tone).toBe('good');
+
+    // Player 0 lands on Player 1's tile 6 -> rent log has playerTones for both
+    state = resolveLanding(state, 6, 6);
+    const rentLog = state.logs[state.logs.length - 1];
+    expect(rentLog.playerTones?.[0]).toBe('bad');
+    expect(rentLog.playerTones?.[1]).toBe('good');
+
+    // Action card effect logs exact amount
+    state = {
+      ...state,
+      phase: 'CARD_MODAL',
+      drawnCard: CARD_BY_ID['ch_tutor_pay'],
+    };
+    state = acknowledgeCard(state);
+    expect(state.logs[state.logs.length - 1].text.en).toContain('150 €');
+    expect(state.logs[state.logs.length - 1].tone).toBe('good');
+  });
+
+  it('stores lastDeclinedTrade on rejection and clears on new proposal or endTurn (#7)', () => {
+    let state = createInitialState(TEST_PLAYERS);
+    state = {
+      ...state,
+      phase: 'TURN_ACTION',
+      properties: {
+        ...state.properties,
+        1: { ownerIndex: 0, houses: 0, mortgaged: false },
+        6: { ownerIndex: 1, houses: 0, mortgaged: false },
+      },
+    };
+    const offer = {
+      fromIndex: 0,
+      toIndex: 1,
+      offerCash: 20,
+      requestCash: 0,
+      offerProperties: [1],
+      requestProperties: [6],
+      offerJailCards: 0,
+      requestJailCards: 0,
+    };
+    state = proposeTrade(state, offer);
+    state = respondTrade(state, false);
+    expect(state.lastDeclinedTrade).toEqual(offer);
+
+    state = endTurn(state);
+    expect(state.lastDeclinedTrade).toBeNull();
   });
 });
