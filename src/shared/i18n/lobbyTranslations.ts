@@ -17,6 +17,7 @@ export interface LobbyTranslations {
   lobbyCodeJoinPlaceholder: string;
   lobbyCodeJoinBtn: string;
   lobbyCodeConnecting: string;
+  reconnectLastRoom: string;
 }
 
 export const LOBBY_TRANSLATIONS: Record<Language, LobbyTranslations> = {
@@ -37,6 +38,7 @@ export const LOBBY_TRANSLATIONS: Record<Language, LobbyTranslations> = {
     lobbyCodeJoinPlaceholder: 'z.B. A7K9P2',
     lobbyCodeJoinBtn: 'Beitreten',
     lobbyCodeConnecting: 'Verbinde mit Lobby…',
+    reconnectLastRoom: 'Letzte Lobby erneut verbinden',
   },
   en: {
     title: 'Board Game Lobby',
@@ -55,5 +57,6 @@ export const LOBBY_TRANSLATIONS: Record<Language, LobbyTranslations> = {
     lobbyCodeJoinPlaceholder: 'e.g. A7K9P2',
     lobbyCodeJoinBtn: 'Join',
     lobbyCodeConnecting: 'Connecting to lobby…',
+    reconnectLastRoom: 'Reconnect to last lobby',
   },
 };

@@ -59,6 +59,8 @@ interface LobbyProps<TPlayer extends BasePlayerConfig = BasePlayerConfig> {
   maxPlayers?: number;
   onAddPlayer?: () => void;
   onRemovePlayer?: (index: number) => void;
+  lastRoomCode?: string;
+  onReconnectLastRoom?: () => void;
 }
 
 export function Lobby<TPlayer extends BasePlayerConfig = BasePlayerConfig>({
@@ -98,6 +100,8 @@ export function Lobby<TPlayer extends BasePlayerConfig = BasePlayerConfig>({
   maxPlayers = players.length,
   onAddPlayer,
   onRemovePlayer,
+  lastRoomCode,
+  onReconnectLastRoom,
 }: LobbyProps<TPlayer>) {
   const t = LOBBY_TRANSLATIONS[language];
   const [roomCodeInput, setRoomCodeInput] = useState(initialRoomCode);
@@ -469,6 +473,20 @@ export function Lobby<TPlayer extends BasePlayerConfig = BasePlayerConfig>({
           )}
           {guestError && (
             <div style={{ fontSize: '0.82rem', color: 'var(--stamp-red)' }}>{guestError}</div>
+          )}
+          {!isGuest && lastRoomCode && onReconnectLastRoom && !guestConnected && (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '4px', paddingTop: '8px', borderTop: '1px dashed #d6c3a3' }}>
+              <span style={{ fontSize: '0.82rem', color: 'var(--ink-muted)' }}>
+                {language === 'de' ? `Letzter Raum: ${lastRoomCode}` : `Last Room: ${lastRoomCode}`}
+              </span>
+              <Button
+                size="sm"
+                style={{ padding: '6px 12px', fontSize: '0.82rem' }}
+                onClick={onReconnectLastRoom}
+              >
+                {t.reconnectLastRoom} ({lastRoomCode})
+              </Button>
+            </div>
           )}
         </div>
 

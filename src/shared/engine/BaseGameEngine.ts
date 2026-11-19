@@ -38,6 +38,7 @@ export interface EngineSnapshot<
   seatTransports: Record<number, IceTransportKind>;
   minPlayers: number;
   maxPlayers: number;
+  lastRoomCode: string;
 }
 
 export interface BaseGameEngineOptions<
@@ -188,6 +189,7 @@ export abstract class BaseGameEngine<
         seatTransports: this.seatTransports,
         minPlayers: this.minPlayers,
         maxPlayers: this.maxPlayers,
+        lastRoomCode: loadSavedProfile().lastRoomCode ?? '',
       };
     }
     return this.snapshotCache;
@@ -602,9 +604,16 @@ export abstract class BaseGameEngine<
     this.emit();
   }
 
-  public joinRoomAsGuest = (roomCode: string): void => {
+  public reconnectLastRoom = (): void => {
+    const saved = loadSavedProfile();
+    if (saved.lastRoomCode) {
+      this.joinRoomAsGuest(saved.lastRoomCode);
+    }
+  };
     const cleanCode = roomCode.trim().toUpperCase();
     if (!cleanCode) return;
+
+    saveProfile({ lastRoomCode: cleanCode });
 
     this.hostRoom?.closeAll();
     this.hostRoom = null;

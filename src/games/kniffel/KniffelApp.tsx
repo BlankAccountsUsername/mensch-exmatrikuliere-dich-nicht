@@ -57,6 +57,8 @@ export function KniffelApp({
         maxPlayers={snapshot.maxPlayers}
         onAddPlayer={() => engine.addPlayer('bot')}
         onRemovePlayer={engine.removePlayer}
+        lastRoomCode={snapshot.lastRoomCode}
+        onReconnectLastRoom={engine.reconnectLastRoom}
         titleOverride="ECTS-Kniffel"
         subtitleOverride={
           language === 'de'

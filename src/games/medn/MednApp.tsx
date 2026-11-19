@@ -145,6 +145,8 @@ export function MednApp({
         maxPlayers={engine.maxPlayers}
         onAddPlayer={() => engine.addPlayer('bot')}
         onRemovePlayer={engine.removePlayer}
+        lastRoomCode={game.lastRoomCode}
+        onReconnectLastRoom={engine.reconnectLastRoom}
         titleOverride={t.title}
         subtitleOverride={t.subtitle}
         startLabelOverride={t.startGame}
