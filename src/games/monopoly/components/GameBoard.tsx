@@ -48,18 +48,16 @@ function getTileIcon(type: string): string {
   }
 }
 
-function getFlexDirection(edge: EdgeKind): React.CSSProperties['flexDirection'] {
+function getEdgeRotation(edge: EdgeKind): number {
   switch (edge) {
     case 'bottom':
-      return 'column'; // bar on top (facing center)
     case 'top':
-      return 'column-reverse'; // bar on bottom (facing center)
-    case 'left':
-      return 'row-reverse'; // bar on right (facing center)
-    case 'right':
-      return 'row'; // bar on left (facing center)
     case 'corner':
-      return 'column';
+      return 0;
+    case 'left':
+      return 90;
+    case 'right':
+      return -90;
   }
 }
 
@@ -110,24 +108,20 @@ export const GameBoard: React.FC<GameBoardProps> = ({ state, language, onSelectT
           const playersHere = state.players.filter(
             (p) => !p.bankrupt && (displayPositions[p.index] ?? p.position) === tile.index
           );
-          const ringPlayer =
-            playersHere.find((p) => p.index === state.currentTurn) ?? playersHere[0] ?? null;
           const isJailCorner = tile.index === 10;
           const jailedPlayers = isJailCorner ? playersHere.filter((p) => p.inJail) : [];
           const visitingPlayers = isJailCorner ? playersHere.filter((p) => !p.inJail) : [];
+          const outerRingCandidates = isJailCorner ? visitingPlayers : playersHere;
+          const ringPlayer =
+            outerRingCandidates.find((p) => p.index === state.currentTurn) ??
+            outerRingCandidates[0] ??
+            null;
+          const jailRingPlayer =
+            jailedPlayers.find((p) => p.index === state.currentTurn) ?? jailedPlayers[0] ?? null;
           const icon = getTileIcon(tile.type);
           const isPending = state.pendingTileIndex === tile.index;
-          const isHorizontalBar = edge === 'bottom' || edge === 'top';
-          const isVerticalBar = edge === 'left' || edge === 'right';
-
-          const barBorderStyle: React.CSSProperties =
-            edge === 'bottom'
-              ? { borderBottom: '1.5px solid var(--ink)' }
-              : edge === 'top'
-                ? { borderTop: '1.5px solid var(--ink)' }
-                : edge === 'left'
-                  ? { borderLeft: '1.5px solid var(--ink)' }
-                  : { borderRight: '1.5px solid var(--ink)' };
+          const isSideEdge = edge === 'left' || edge === 'right';
+          const rotation = getEdgeRotation(edge);
 
           return (
             <div
@@ -138,7 +132,7 @@ export const GameBoard: React.FC<GameBoardProps> = ({ state, language, onSelectT
               style={{
                 gridRow: row,
                 gridColumn: col,
-                flexDirection: getFlexDirection(edge),
+                flexDirection: 'column',
                 boxShadow: isPending
                   ? 'inset 0 0 0 2.5px var(--c-rot)'
                   : ringPlayer
@@ -158,44 +152,6 @@ export const GameBoard: React.FC<GameBoardProps> = ({ state, language, onSelectT
                             : undefined,
               }}
             >
-              {/* Color band facing the center of the board */}
-              {groupColor && (
-                <div
-                  style={{
-                    ...(isHorizontalBar
-                      ? { height: '13px', width: '100%' }
-                      : { width: '13px', height: '100%' }),
-                    background: groupColor,
-                    ...barBorderStyle,
-                    display: 'flex',
-                    flexDirection: isVerticalBar ? 'column' : 'row',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: '1px',
-                    flexShrink: 0,
-                  }}
-                >
-                  {prop && prop.houses > 0 && prop.houses < 5 && (
-                    <span
-                      style={{
-                        fontSize: '0.48rem',
-                        color: '#fff',
-                        fontWeight: 800,
-                        lineHeight: 1,
-                        letterSpacing: '-1px',
-                      }}
-                    >
-                      {'🏠'.repeat(prop.houses)}
-                    </span>
-                  )}
-                  {prop && prop.houses === 5 && (
-                    <span style={{ fontSize: '0.58rem', color: '#fff', fontWeight: 800, lineHeight: 1 }}>
-                      🏛
-                    </span>
-                  )}
-                </div>
-              )}
-
               {/* Tile Body */}
               {isJailCorner ? (
                 <div
@@ -217,6 +173,9 @@ export const GameBoard: React.FC<GameBoardProps> = ({ state, language, onSelectT
                       background: '#e8c4a2',
                       borderLeft: '1.5px solid var(--ink)',
                       borderBottom: '1.5px solid var(--ink)',
+                      boxShadow: jailRingPlayer
+                        ? `inset 0 0 0 2.5px ${COLOR_HEX[jailRingPlayer.color]}`
+                        : undefined,
                       display: 'flex',
                       flexDirection: 'column',
                       alignItems: 'center',
@@ -248,44 +207,50 @@ export const GameBoard: React.FC<GameBoardProps> = ({ state, language, onSelectT
                           alignItems: 'center',
                           justifyContent: 'center',
                           flexWrap: 'wrap',
-                          gap: '1px',
+                          gap: '2px',
                           pointerEvents: 'none',
+                          zIndex: 3,
                         }}
                       >
-                        {jailedPlayers.map((p) => (
-                          <span
-                            key={p.color}
-                            style={{
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              width: '18px',
-                              height: '18px',
-                              borderRadius: '50%',
-                              background: `radial-gradient(circle at 32% 30%, #ffffff55 0%, ${COLOR_HEX[p.color]} 55%, #00000044 100%)`,
-                              backgroundColor: COLOR_HEX[p.color],
-                              border: '2px solid #fffdf8',
-                              boxShadow: '0 2px 4px rgba(0,0,0,0.45)',
-                              fontSize: '0.62rem',
-                              lineHeight: 1,
-                            }}
-                          >
-                            {p.emoji ?? '🎓'}
-                          </span>
-                        ))}
+                        {jailedPlayers.map((p) => {
+                          const isActive = p.index === state.currentTurn;
+                          return (
+                            <span
+                              key={p.color}
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                width: isActive ? '21px' : '18px',
+                                height: isActive ? '21px' : '18px',
+                                borderRadius: '6px',
+                                background: `radial-gradient(circle at 32% 30%, #ffffff55 0%, ${COLOR_HEX[p.color]} 55%, #00000044 100%)`,
+                                backgroundColor: COLOR_HEX[p.color],
+                                border: isActive ? '2.5px solid #fffdf8' : '2px solid #fffdf8',
+                                boxShadow: isActive
+                                  ? `0 2px 6px rgba(0,0,0,0.55), 0 0 0 1.5px ${COLOR_HEX[p.color]}`
+                                  : '0 2px 4px rgba(0,0,0,0.45)',
+                                fontSize: isActive ? '0.72rem' : '0.62rem',
+                                lineHeight: 1,
+                              }}
+                            >
+                              {p.emoji ?? '🎓'}
+                            </span>
+                          );
+                        })}
                       </div>
                     )}
                   </div>
 
-                  {/* Outer "Nur zur Einsicht" label along bottom */}
+                  {/* Outer "Nur zur Einsicht" label along bottom-right */}
                   <div
                     style={{
                       position: 'absolute',
                       bottom: '2px',
                       left: '2px',
                       right: '2px',
-                      textAlign: 'center',
-                      fontSize: '0.4rem',
+                      textAlign: 'right',
+                      fontSize: '0.38rem',
                       fontWeight: 800,
                       letterSpacing: '0.02em',
                       color: 'var(--ink)',
@@ -295,110 +260,133 @@ export const GameBoard: React.FC<GameBoardProps> = ({ state, language, onSelectT
                     {language === 'de' ? 'NUR ZUR EINSICHT' : 'JUST VISITING'}
                   </div>
 
-                  {/* Visiting Pawns in outer L-strip */}
+                  {/* Visiting Pawns in outer L-strip (outside bottom-left corner) */}
                   {visitingPlayers.length > 0 && (
                     <div
                       style={{
                         position: 'absolute',
                         left: '2px',
-                        bottom: '10px',
+                        bottom: '2px',
                         display: 'flex',
                         flexWrap: 'wrap',
-                        gap: '1px',
+                        gap: '2px',
+                        maxWidth: '64%',
                         pointerEvents: 'none',
+                        zIndex: 3,
                       }}
                     >
-                      {visitingPlayers.map((p) => (
-                        <span
-                          key={p.color}
-                          style={{
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            width: '18px',
-                            height: '18px',
-                            borderRadius: '50%',
-                            background: `radial-gradient(circle at 32% 30%, #ffffff55 0%, ${COLOR_HEX[p.color]} 55%, #00000044 100%)`,
-                            backgroundColor: COLOR_HEX[p.color],
-                            border: '2px solid #fffdf8',
-                            boxShadow: '0 2px 4px rgba(0,0,0,0.45)',
-                            fontSize: '0.62rem',
-                            lineHeight: 1,
-                          }}
-                        >
-                          {p.emoji ?? '🎓'}
-                        </span>
-                      ))}
+                      {visitingPlayers.map((p) => {
+                        const isActive = p.index === state.currentTurn;
+                        return (
+                          <span
+                            key={p.color}
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              width: isActive ? '21px' : '18px',
+                              height: isActive ? '21px' : '18px',
+                              borderRadius: '6px',
+                              background: `radial-gradient(circle at 32% 30%, #ffffff55 0%, ${COLOR_HEX[p.color]} 55%, #00000044 100%)`,
+                              backgroundColor: COLOR_HEX[p.color],
+                              border: isActive ? '2.5px solid #fffdf8' : '2px solid #fffdf8',
+                              boxShadow: isActive
+                                ? `0 2px 6px rgba(0,0,0,0.55), 0 0 0 1.5px ${COLOR_HEX[p.color]}`
+                                : '0 2px 4px rgba(0,0,0,0.45)',
+                              fontSize: isActive ? '0.72rem' : '0.62rem',
+                              lineHeight: 1,
+                            }}
+                          >
+                            {p.emoji ?? '🎓'}
+                          </span>
+                        );
+                      })}
                     </div>
                   )}
                 </div>
               ) : (
                 <>
                   <div
-                    style={{
-                      flex: 1,
-                      display: 'flex',
-                      flexDirection: 'column',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      padding: edge === 'corner' ? '4px 3px' : '2px 2px',
-                      minWidth: 0,
-                      minHeight: 0,
-                    }}
+                    style={
+                      edge === 'corner'
+                        ? {
+                            flex: 1,
+                            display: 'flex',
+                            flexDirection: 'column',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            padding: '4px 3px',
+                            minWidth: 0,
+                            minHeight: 0,
+                          }
+                        : {
+                            position: 'absolute',
+                            top: '50%',
+                            left: '50%',
+                            width: isSideEdge ? '100cqh' : '100%',
+                            height: isSideEdge ? '100cqw' : '100%',
+                            transform: `translate(-50%, -50%) rotate(${rotation}deg)`,
+                            display: 'flex',
+                            flexDirection: edge === 'top' ? 'column-reverse' : 'column',
+                            alignItems: 'center',
+                            minWidth: 0,
+                            minHeight: 0,
+                          }
+                    }
                   >
-                    <div
-                      style={{
-                        flex: 1,
-                        display: 'flex',
-                        flexDirection: 'column',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        textAlign: 'center',
-                        gap: '1px',
-                      }}
-                    >
-                      {icon && (
-                        <span style={{ fontSize: edge === 'corner' ? '1.25rem' : '0.82rem', lineHeight: 1 }}>
-                          {icon}
-                        </span>
-                      )}
-                      <span
+                    {/* Inner edge band (13px color bar for streets, or 13px spacer so price is always at the same offset) */}
+                    {edge !== 'corner' && (
+                      <div
                         style={{
-                          fontSize: edge === 'corner' ? '0.54rem' : '0.46rem',
-                          fontWeight: 700,
-                          lineHeight: 1.05,
-                          wordBreak: 'break-word',
-                          color: 'var(--ink)',
+                          height: '13px',
+                          width: '100%',
+                          background: groupColor ?? 'transparent',
+                          borderBottom:
+                            groupColor && edge !== 'top' ? '1.5px solid var(--ink)' : undefined,
+                          borderTop:
+                            groupColor && edge === 'top' ? '1.5px solid var(--ink)' : undefined,
+                          display: 'flex',
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: '1px',
+                          flexShrink: 0,
                         }}
                       >
-                        {tile.name[language]}
-                      </span>
-                    </div>
+                        {groupColor && prop && prop.houses > 0 && prop.houses < 5 && (
+                          <span
+                            style={{
+                              fontSize: '0.48rem',
+                              color: '#fff',
+                              fontWeight: 800,
+                              lineHeight: 1,
+                              letterSpacing: '-1px',
+                            }}
+                          >
+                            {'🏠'.repeat(prop.houses)}
+                          </span>
+                        )}
+                        {groupColor && prop && prop.houses === 5 && (
+                          <span style={{ fontSize: '0.58rem', color: '#fff', fontWeight: 800, lineHeight: 1 }}>
+                            🏛
+                          </span>
+                        )}
+                      </div>
+                    )}
 
-                    {/* Price / Owner Strip */}
-                    {(owner || tile.price || tile.taxAmount || tile.index === 0) && (
+                    {/* Price Strip (always directly below the 13px inner edge, facing board center) */}
+                    {(tile.price || tile.taxAmount || tile.index === 0) && (
                       <div
                         style={{
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'center',
-                          gap: '2px',
+                          paddingTop: edge === 'top' ? undefined : '2px',
+                          paddingBottom: edge === 'top' ? '2px' : undefined,
                           minHeight: '10px',
+                          flexShrink: 0,
                         }}
                       >
-                        {owner && (
-                          <span
-                            style={{
-                              width: 7,
-                              height: 7,
-                              borderRadius: '50%',
-                              background: COLOR_HEX[owner.color],
-                              border: '1px solid var(--ink)',
-                              display: 'inline-block',
-                              flexShrink: 0,
-                            }}
-                          />
-                        )}
                         {tile.price && (
                           <span
                             style={{
@@ -437,17 +425,57 @@ export const GameBoard: React.FC<GameBoardProps> = ({ state, language, onSelectT
                         )}
                       </div>
                     )}
+
+                    {/* Icon + Street Name */}
+                    <div
+                      style={{
+                        flex: 1,
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        textAlign: 'center',
+                        gap: '1px',
+                        padding:
+                          edge === 'corner'
+                            ? undefined
+                            : edge === 'top'
+                              ? `${playersHere.length > 0 ? '24px' : '4px'} 2px 0`
+                              : `0 2px ${playersHere.length > 0 ? '24px' : '4px'}`,
+                        minWidth: 0,
+                      }}
+                    >
+                      {icon && (
+                        <span style={{ fontSize: edge === 'corner' ? '1.25rem' : '0.78rem', lineHeight: 1 }}>
+                          {icon}
+                        </span>
+                      )}
+                      <span
+                        style={{
+                          fontSize: edge === 'corner' ? '0.54rem' : '0.44rem',
+                          fontWeight: 700,
+                          lineHeight: 1.05,
+                          wordBreak: 'break-word',
+                          color: 'var(--ink)',
+                        }}
+                      >
+                        {tile.name[language]}
+                      </span>
+                    </div>
                   </div>
 
-                  {/* Player Pawns (pinned to outer edge so street name stays readable) */}
+                  {/* Player Pawns (always pinned to the outside edge, away from board center) */}
                   {playersHere.length > 0 && (
                     <div
                       style={{
                         position: 'absolute',
-                        left: 0,
-                        right: 0,
-                        bottom: edge === 'top' ? undefined : '2px',
-                        top: edge === 'top' ? '2px' : undefined,
+                        ...(edge === 'top'
+                          ? { top: '2px', left: 0, right: 0, flexDirection: 'row' as const }
+                          : edge === 'left'
+                            ? { left: '2px', top: 0, bottom: 0, flexDirection: 'column' as const }
+                            : edge === 'right'
+                              ? { right: '2px', top: 0, bottom: 0, flexDirection: 'column' as const }
+                              : { bottom: '2px', left: 0, right: 0, flexDirection: 'row' as const }),
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
@@ -467,16 +495,16 @@ export const GameBoard: React.FC<GameBoardProps> = ({ state, language, onSelectT
                               display: 'inline-flex',
                               alignItems: 'center',
                               justifyContent: 'center',
-                              width: isActive ? '23px' : '20px',
-                              height: isActive ? '23px' : '20px',
-                              borderRadius: '6px',
+                              width: isActive ? '20px' : '17px',
+                              height: isActive ? '20px' : '17px',
+                              borderRadius: '5px',
                               background: `radial-gradient(circle at 32% 30%, #ffffff55 0%, ${COLOR_HEX[p.color]} 55%, #00000044 100%)`,
                               backgroundColor: COLOR_HEX[p.color],
-                              border: isActive ? '2.5px solid #fffdf8' : '2px solid #fffdf8',
+                              border: isActive ? '2px solid #fffdf8' : '1.5px solid #fffdf8',
                               boxShadow: isActive
-                                ? `0 2px 6px rgba(0,0,0,0.55), 0 0 0 1.5px ${COLOR_HEX[p.color]}`
-                                : '0 2px 4px rgba(0,0,0,0.45)',
-                              fontSize: isActive ? '0.78rem' : '0.68rem',
+                                ? `0 2px 5px rgba(0,0,0,0.55), 0 0 0 1.5px ${COLOR_HEX[p.color]}`
+                                : '0 1px 3px rgba(0,0,0,0.45)',
+                              fontSize: isActive ? '0.68rem' : '0.58rem',
                               lineHeight: 1,
                               transition: 'transform 100ms ease',
                             }}
