@@ -94,6 +94,7 @@ export interface PlayerState {
   inJail: boolean;
   jailTurns: number;
   jailCards: number;
+  jailCardDecks?: ('chance' | 'chest')[];
   bankrupt: boolean;
 }
 
@@ -132,6 +133,7 @@ export interface LogEntry {
   text: Record<Language, string>;
   playerIndex?: number;
   tone?: 'neutral' | 'good' | 'bad' | 'highlight';
+  playerTones?: Record<number, 'neutral' | 'good' | 'bad' | 'highlight'>;
 }
 
 export interface GameState {
@@ -147,6 +149,7 @@ export interface GameState {
   pendingTileIndex: number | null;
   drawnCard: DrawnCard | null;
   pendingTrade: TradeOffer | null;
+  lastDeclinedTrade?: TradeOffer | null;
   preTradePhase?: 'WAIT_ROLL' | 'TURN_ACTION';
   auction: AuctionState | null;
   debtCreditorIndex: number | null;
@@ -175,4 +178,5 @@ export type GameAction =
   | { type: 'PROPOSE_TRADE'; offer: TradeOffer }
   | { type: 'RESPOND_TRADE'; accept: boolean }
   | { type: 'DECLARE_BANKRUPTCY' }
-  | { type: 'END_TURN' };
+  | { type: 'END_TURN' }
+  | { type: 'ROLL_AGAIN' };

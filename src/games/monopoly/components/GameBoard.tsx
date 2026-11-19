@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { BOARD_TILES, COLOR_GROUP_INFO } from '../game/boardData';
 import type { GameState, Language } from '../game/types';
 import { TRANSLATIONS } from '../i18n/translations';
@@ -65,6 +65,39 @@ function getFlexDirection(edge: EdgeKind): React.CSSProperties['flexDirection'] 
 
 export const GameBoard: React.FC<GameBoardProps> = ({ state, language, onSelectTile }) => {
   const t = TRANSLATIONS[language];
+  const [displayPositions, setDisplayPositions] = useState<Record<number, number>>(() => {
+    const init: Record<number, number> = {};
+    for (const p of state.players) init[p.index] = p.position;
+    return init;
+  });
+
+  useEffect(() => {
+    const needsStep = state.players.some(
+      (p) => !p.bankrupt && (displayPositions[p.index] ?? p.position) !== p.position
+    );
+    if (!needsStep) return;
+
+    const timer = window.setTimeout(() => {
+      setDisplayPositions((prev) => {
+        const next: Record<number, number> = { ...prev };
+        for (const p of state.players) {
+          const cur = prev[p.index] ?? p.position;
+          if (cur === p.position) continue;
+          if (p.inJail && p.position === 10) {
+            // Direct detention teleport
+            next[p.index] = 10;
+          } else {
+            const forwardDist = (p.position - cur + 40) % 40;
+            // Step forward 1 tile at a time for normal movement (<= 16 tiles), or snap if huge jump
+            next[p.index] = forwardDist <= 16 ? (cur + 1) % 40 : p.position;
+          }
+        }
+        return next;
+      });
+    }, 105);
+
+    return () => window.clearTimeout(timer);
+  }, [state.players, displayPositions]);
 
   return (
     <div className="monopoly-board-frame">
@@ -74,7 +107,11 @@ export const GameBoard: React.FC<GameBoardProps> = ({ state, language, onSelectT
           const prop = state.properties[tile.index];
           const owner = prop && prop.ownerIndex !== null ? state.players[prop.ownerIndex] : null;
           const groupColor = tile.group ? COLOR_GROUP_INFO[tile.group].hex : null;
-          const playersHere = state.players.filter((p) => !p.bankrupt && p.position === tile.index);
+          const playersHere = state.players.filter(
+            (p) => !p.bankrupt && (displayPositions[p.index] ?? p.position) === tile.index
+          );
+          const ringPlayer =
+            playersHere.find((p) => p.index === state.currentTurn) ?? playersHere[0] ?? null;
           const isJailCorner = tile.index === 10;
           const jailedPlayers = isJailCorner ? playersHere.filter((p) => p.inJail) : [];
           const visitingPlayers = isJailCorner ? playersHere.filter((p) => !p.inJail) : [];
@@ -102,7 +139,11 @@ export const GameBoard: React.FC<GameBoardProps> = ({ state, language, onSelectT
                 gridRow: row,
                 gridColumn: col,
                 flexDirection: getFlexDirection(edge),
-                boxShadow: isPending ? 'inset 0 0 0 2.5px var(--c-rot)' : undefined,
+                boxShadow: isPending
+                  ? 'inset 0 0 0 2.5px var(--c-rot)'
+                  : ringPlayer
+                    ? `inset 0 0 0 2.5px ${COLOR_HEX[ringPlayer.color]}`
+                    : undefined,
                 background:
                   tile.index === 0
                     ? '#f3e5c3'
@@ -112,7 +153,9 @@ export const GameBoard: React.FC<GameBoardProps> = ({ state, language, onSelectT
                         ? '#e6efe2'
                         : tile.index === 30
                           ? '#f5dfd9'
-                          : undefined,
+                          : owner
+                            ? `${COLOR_HEX[owner.color]}22`
+                            : undefined,
               }}
             >
               {/* Color band facing the center of the board */}
@@ -396,42 +439,52 @@ export const GameBoard: React.FC<GameBoardProps> = ({ state, language, onSelectT
                     )}
                   </div>
 
-                  {/* Player Pawns */}
+                  {/* Player Pawns (pinned to outer edge so street name stays readable) */}
                   {playersHere.length > 0 && (
                     <div
                       style={{
                         position: 'absolute',
-                        inset: 0,
+                        left: 0,
+                        right: 0,
+                        bottom: edge === 'top' ? undefined : '2px',
+                        top: edge === 'top' ? '2px' : undefined,
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
                         flexWrap: 'wrap',
                         gap: '2px',
                         pointerEvents: 'none',
-                        padding: '2px',
+                        padding: '1px 2px',
+                        zIndex: 3,
                       }}
                     >
-                      {playersHere.map((p) => (
-                        <span
-                          key={p.color}
-                          style={{
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            width: '21px',
-                            height: '21px',
-                            borderRadius: '50%',
-                            background: `radial-gradient(circle at 32% 30%, #ffffff55 0%, ${COLOR_HEX[p.color]} 55%, #00000044 100%)`,
-                            backgroundColor: COLOR_HEX[p.color],
-                            border: '2px solid #fffdf8',
-                            boxShadow: '0 2px 4px rgba(0,0,0,0.45)',
-                            fontSize: '0.72rem',
-                            lineHeight: 1,
-                          }}
-                        >
-                          {p.emoji ?? '🎓'}
-                        </span>
-                      ))}
+                      {playersHere.map((p) => {
+                        const isActive = p.index === state.currentTurn;
+                        return (
+                          <span
+                            key={p.color}
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              width: isActive ? '23px' : '20px',
+                              height: isActive ? '23px' : '20px',
+                              borderRadius: '6px',
+                              background: `radial-gradient(circle at 32% 30%, #ffffff55 0%, ${COLOR_HEX[p.color]} 55%, #00000044 100%)`,
+                              backgroundColor: COLOR_HEX[p.color],
+                              border: isActive ? '2.5px solid #fffdf8' : '2px solid #fffdf8',
+                              boxShadow: isActive
+                                ? `0 2px 6px rgba(0,0,0,0.55), 0 0 0 1.5px ${COLOR_HEX[p.color]}`
+                                : '0 2px 4px rgba(0,0,0,0.45)',
+                              fontSize: isActive ? '0.78rem' : '0.68rem',
+                              lineHeight: 1,
+                              transition: 'transform 100ms ease',
+                            }}
+                          >
+                            {p.emoji ?? '🎓'}
+                          </span>
+                        );
+                      })}
                     </div>
                   )}
                 </>

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { BOARD_TILES, COLOR_GROUP_INFO } from '../game/boardData';
 import {
   canBuildOnTile,
@@ -9,11 +9,13 @@ import {
   getUnmortgageCost,
 } from '../game/helpers';
 import type { GameAction, GameState, Language } from '../game/types';
+import { COLOR_HEX } from './lobby/types';
 
 interface PropertyManagerModalProps {
   state: GameState;
   language: Language;
   canAct: boolean;
+  initialPlayerIndex?: number;
   onAction: (action: GameAction) => void;
   onClose: () => void;
 }
@@ -22,11 +24,17 @@ export const PropertyManagerModal: React.FC<PropertyManagerModalProps> = ({
   state,
   language,
   canAct,
+  initialPlayerIndex,
   onAction,
   onClose,
 }) => {
-  const playerIdx = state.currentTurn;
-  const player = state.players[playerIdx];
+  const [selectedPlayerIdx, setSelectedPlayerIdx] = useState<number>(
+    () => initialPlayerIndex ?? state.currentTurn
+  );
+  const playerIdx = selectedPlayerIdx;
+  const player = state.players[playerIdx] ?? state.players[state.currentTurn];
+  const isTurnOwner = playerIdx === state.currentTurn;
+  const canManage = canAct && isTurnOwner;
   const ownedTiles = BOARD_TILES.filter(
     (t) => state.properties[t.index]?.ownerIndex === playerIdx
   );
@@ -69,11 +77,61 @@ export const PropertyManagerModal: React.FC<PropertyManagerModalProps> = ({
           }}
         >
           <strong style={{ fontFamily: 'var(--font-display)', fontSize: '1.15rem' }}>
-            🏘️ {player.name} — {language === 'de' ? 'Grundstücke' : 'Properties'} ({player.cash} €)
+            🏘️ {player.emoji ?? ''} {player.name} — {player.cash} €
+            {player.jailCards > 0 ? ` · 🎫 ×${player.jailCards}` : ''}
           </strong>
           <button type="button" className="tactile-btn" onClick={onClose} style={{ padding: '4px 10px' }}>
             ✕
           </button>
+        </div>
+
+        {/* Player Selector Tabs */}
+        <div
+          style={{
+            display: 'flex',
+            gap: '6px',
+            padding: '8px 18px',
+            borderBottom: '1px solid #e2d5be',
+            overflowX: 'auto',
+            flexShrink: 0,
+            background: '#fbf7ee',
+          }}
+        >
+          {state.players.map((p) => {
+            const active = p.index === playerIdx;
+            return (
+              <button
+                key={p.index}
+                type="button"
+                onClick={() => setSelectedPlayerIdx(p.index)}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                  padding: '4px 10px',
+                  borderRadius: '999px',
+                  border: active ? `2px solid ${COLOR_HEX[p.color]}` : '1.5px solid #d6c3a3',
+                  background: active ? '#fffdf8' : '#f4ecdc',
+                  fontWeight: active ? 800 : 600,
+                  fontSize: '0.76rem',
+                  cursor: 'pointer',
+                  opacity: p.bankrupt ? 0.55 : 1,
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                <span
+                  style={{
+                    width: 9,
+                    height: 9,
+                    borderRadius: '50%',
+                    background: COLOR_HEX[p.color],
+                    border: '1px solid var(--ink)',
+                  }}
+                />
+                {p.name}
+              </button>
+            );
+          })}
         </div>
 
         <div style={{ padding: '14px 18px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '8px' }}>
@@ -85,10 +143,10 @@ export const PropertyManagerModal: React.FC<PropertyManagerModalProps> = ({
             ownedTiles.map((tile) => {
               const prop = state.properties[tile.index];
               const groupColor = tile.group ? COLOR_GROUP_INFO[tile.group].hex : '#5a6577';
-              const buildable = canAct && canBuildOnTile(state, playerIdx, tile.index);
-              const sellable = canAct && canSellOnTile(state, playerIdx, tile.index);
-              const mortgagable = canAct && canMortgageTile(state, playerIdx, tile.index);
-              const unmortgagable = canAct && canUnmortgageTile(state, playerIdx, tile.index);
+              const buildable = canManage && canBuildOnTile(state, playerIdx, tile.index);
+              const sellable = canManage && canSellOnTile(state, playerIdx, tile.index);
+              const mortgagable = canManage && canMortgageTile(state, playerIdx, tile.index);
+              const unmortgagable = canManage && canUnmortgageTile(state, playerIdx, tile.index);
 
               return (
                 <div

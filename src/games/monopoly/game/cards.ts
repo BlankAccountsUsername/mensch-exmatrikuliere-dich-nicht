@@ -1,5 +1,5 @@
 import { BOARD_TILES } from './boardData';
-import type { RngFn } from './helpers';
+import { appendLog, type RngFn } from './helpers';
 import { applyCashDelta, movePlayerForward, resolveLanding, sendPlayerToJail } from './landing';
 import type { GameState } from './types';
 
@@ -18,17 +18,48 @@ export function acknowledgeCard(state: GameState, rng: RngFn = Math.random): Gam
       if (effect.amount < 0 && next.settings.freeParkingPot) {
         next = { ...next, freeParkingPot: next.freeParkingPot + Math.abs(effect.amount) };
       }
+      const absAmt = Math.abs(effect.amount);
+      const tone = effect.amount >= 0 ? 'good' : 'bad';
+      const log = appendLog(
+        next.logs,
+        next.nextLogId,
+        effect.amount >= 0
+          ? {
+              de: `${player.name} erhält ${absAmt} € (${card.title.de}).`,
+              en: `${player.name} receives ${absAmt} € (${card.title.en}).`,
+            }
+          : {
+              de: `${player.name} zahlt ${absAmt} € (${card.title.de}).`,
+              en: `${player.name} pays ${absAmt} € (${card.title.en}).`,
+            },
+        playerIdx,
+        tone
+      );
       return {
         ...next,
         phase: next.players[playerIdx].cash < 0 ? 'DEBT_RECOVERY' : 'TURN_ACTION',
+        logs: log.logs,
+        nextLogId: log.nextLogId,
       };
     }
 
     case 'jail_card': {
       const players = baseState.players.map((p, i) =>
-        i === playerIdx ? { ...p, jailCards: p.jailCards + 1 } : p
+        i === playerIdx
+          ? { ...p, jailCards: p.jailCards + 1, jailCardDecks: [...(p.jailCardDecks ?? []), card.deck] }
+          : p
       );
-      return { ...baseState, players, phase: 'TURN_ACTION' };
+      const log = appendLog(
+        baseState.logs,
+        baseState.nextLogId,
+        {
+          de: `${player.name} behält eine Freikarte (${card.title.de}).`,
+          en: `${player.name} keeps a Get Out of Jail Free card (${card.title.en}).`,
+        },
+        playerIdx,
+        'good'
+      );
+      return { ...baseState, players, phase: 'TURN_ACTION', logs: log.logs, nextLogId: log.nextLogId };
     }
 
     case 'goto_jail': {
@@ -77,9 +108,21 @@ export function acknowledgeCard(state: GameState, rng: RngFn = Math.random): Gam
       if (cost > 0 && next.settings.freeParkingPot) {
         next = { ...next, freeParkingPot: next.freeParkingPot + cost };
       }
+      const log = appendLog(
+        next.logs,
+        next.nextLogId,
+        {
+          de: `${player.name} zahlt ${cost} € Renovierungskosten (${card.title.de}).`,
+          en: `${player.name} pays ${cost} € for repairs (${card.title.en}).`,
+        },
+        playerIdx,
+        cost > 0 ? 'bad' : 'neutral'
+      );
       return {
         ...next,
         phase: next.players[playerIdx].cash < 0 ? 'DEBT_RECOVERY' : 'TURN_ACTION',
+        logs: log.logs,
+        nextLogId: log.nextLogId,
       };
     }
 
@@ -91,7 +134,20 @@ export function acknowledgeCard(state: GameState, rng: RngFn = Math.random): Gam
         if (p.index === playerIdx) return { ...p, cash: p.cash + totalGain };
         return { ...p, cash: p.cash - effect.amount };
       });
-      return { ...baseState, players, phase: 'TURN_ACTION' };
+      const playerTones: Record<number, 'good' | 'bad'> = { [playerIdx]: 'good' };
+      for (const o of others) playerTones[o.index] = 'bad';
+      const log = appendLog(
+        baseState.logs,
+        baseState.nextLogId,
+        {
+          de: `${player.name} erhält je ${effect.amount} € von allen (${totalGain} € gesamt).`,
+          en: `${player.name} collects ${effect.amount} € from each player (${totalGain} € total).`,
+        },
+        playerIdx,
+        'good',
+        playerTones
+      );
+      return { ...baseState, players, phase: 'TURN_ACTION', logs: log.logs, nextLogId: log.nextLogId };
     }
 
     case 'pay_to_all': {
@@ -102,10 +158,25 @@ export function acknowledgeCard(state: GameState, rng: RngFn = Math.random): Gam
         if (p.index === playerIdx) return { ...p, cash: p.cash - totalCost };
         return { ...p, cash: p.cash + effect.amount };
       });
+      const playerTones: Record<number, 'good' | 'bad'> = { [playerIdx]: 'bad' };
+      for (const o of others) playerTones[o.index] = 'good';
+      const log = appendLog(
+        baseState.logs,
+        baseState.nextLogId,
+        {
+          de: `${player.name} zahlt je ${effect.amount} € an alle (${totalCost} € gesamt).`,
+          en: `${player.name} pays ${effect.amount} € to each player (${totalCost} € total).`,
+        },
+        playerIdx,
+        'bad',
+        playerTones
+      );
       return {
         ...baseState,
         players,
         phase: players[playerIdx].cash < 0 ? 'DEBT_RECOVERY' : 'TURN_ACTION',
+        logs: log.logs,
+        nextLogId: log.nextLogId,
       };
     }
   }
