@@ -109,18 +109,14 @@ describe('BaseGameEngine', () => {
     };
 
     // Simulate disconnect of seat 1
-    const hostRoom = engine['hostRoom'] = {
+    engine['hostRoom'] = {
       closeAll: vi.fn(),
       broadcast: vi.fn(),
       sendToSeat: vi.fn(),
     } as any;
 
-    // Trigger status change disconnect for seat 1
-    const statusChangeCb = (engine as any)['hostRoom']?.options?.onStatusChange;
-    // We can call onStatusChange directly or via hostRoom setup
-    // Let's test via private/protected method or simulate hostRoom status change callback
-    // In initHostRoom, onStatusChange is passed to LobbyHostRoom.
     expect(engine['players'][1].seatType).toBe('human-remote');
+    engine.destroy();
   });
 
   it('adds, removes, and auto-adds remote seats up to maxPlayers', () => {
