@@ -199,9 +199,10 @@ export function appendLog(
   nextLogId: number,
   text: Record<Language, string>,
   playerIndex?: number,
-  tone: LogEntry['tone'] = 'neutral'
+  tone: LogEntry['tone'] = 'neutral',
+  playerTones?: LogEntry['playerTones']
 ): { logs: LogEntry[]; nextLogId: number } {
-  const entry: LogEntry = { id: nextLogId, text, playerIndex, tone };
+  const entry: LogEntry = { id: nextLogId, text, playerIndex, tone, ...(playerTones ? { playerTones } : {}) };
   const trimmed = [...logs, entry].slice(-45);
   return { logs: trimmed, nextLogId: nextLogId + 1 };
 }

@@ -75,6 +75,13 @@ export function executeTrade(state: GameState, offer: TradeOffer): GameState {
   from.jailCards = from.jailCards - offer.offerJailCards + offer.requestJailCards;
   to.jailCards = to.jailCards + offer.offerJailCards - offer.requestJailCards;
 
+  const fromDecks = [...(from.jailCardDecks ?? [])];
+  const toDecks = [...(to.jailCardDecks ?? [])];
+  const sentDecks = fromDecks.splice(0, offer.offerJailCards);
+  const recvDecks = toDecks.splice(0, offer.requestJailCards);
+  from.jailCardDecks = [...fromDecks, ...recvDecks];
+  to.jailCardDecks = [...toDecks, ...sentDecks];
+
   for (const tileIdx of offer.offerProperties) {
     properties[tileIdx] = { ...properties[tileIdx], ownerIndex: offer.toIndex };
   }
@@ -98,6 +105,7 @@ export function executeTrade(state: GameState, offer: TradeOffer): GameState {
     players,
     properties,
     pendingTrade: null,
+    lastDeclinedTrade: null,
     preTradePhase: undefined,
     phase: from.cash < 0 ? 'DEBT_RECOVERY' : (state.preTradePhase ?? 'TURN_ACTION'),
     logs: log.logs,

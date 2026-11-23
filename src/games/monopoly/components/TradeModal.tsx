@@ -9,6 +9,7 @@ interface TradeModalProps {
   language: Language;
   localSeatIndices: number[];
   isOpen: boolean;
+  initialOffer?: TradeOffer | null;
   onAction: (action: GameAction) => void;
   onClose: () => void;
 }
@@ -18,6 +19,7 @@ export const TradeModal: React.FC<TradeModalProps> = ({
   language,
   localSeatIndices,
   isOpen,
+  initialOffer,
   onAction,
   onClose,
 }) => {
@@ -25,15 +27,15 @@ export const TradeModal: React.FC<TradeModalProps> = ({
   const fromPlayer = state.players[fromIdx];
   const candidates = state.players.filter((p) => !p.bankrupt && p.index !== fromIdx);
 
-  const [toIdx, setToIdx] = useState<number>(() => candidates[0]?.index ?? 1);
-  const [offerCash, setOfferCash] = useState(0);
-  const [requestCash, setRequestCash] = useState(0);
-  const [offerProps, setOfferProps] = useState<number[]>([]);
-  const [requestProps, setRequestProps] = useState<number[]>([]);
-  const [offerJailCards, setOfferJailCards] = useState(0);
-  const [requestJailCards, setRequestJailCards] = useState(0);
+  const [toIdx, setToIdx] = useState<number>(() => initialOffer?.toIndex ?? candidates[0]?.index ?? 1);
+  const [offerCash, setOfferCash] = useState(() => initialOffer?.offerCash ?? 0);
+  const [requestCash, setRequestCash] = useState(() => initialOffer?.requestCash ?? 0);
+  const [offerProps, setOfferProps] = useState<number[]>(() => initialOffer?.offerProperties ?? []);
+  const [requestProps, setRequestProps] = useState<number[]>(() => initialOffer?.requestProperties ?? []);
+  const [offerJailCards, setOfferJailCards] = useState(() => initialOffer?.offerJailCards ?? 0);
+  const [requestJailCards, setRequestJailCards] = useState(() => initialOffer?.requestJailCards ?? 0);
 
-  // Incoming Trade Review
+  // Incoming Trade Review (docked side-panel, board remains visible)
   if (state.phase === 'TRADE_REVIEW' && state.pendingTrade) {
     const offer = state.pendingTrade;
     const sender = state.players[offer.fromIndex];
@@ -42,44 +44,34 @@ export const TradeModal: React.FC<TradeModalProps> = ({
 
     return (
       <div
-        role="dialog"
-        aria-modal="true"
+        role="region"
+        aria-label={language === 'de' ? 'Tauschangebot' : 'Trade Offer'}
+        className="paper-card"
         style={{
-          position: 'fixed',
-          inset: 0,
-          zIndex: 58,
-          background: 'rgba(28, 22, 16, 0.5)',
+          width: '100%',
+          boxSizing: 'border-box',
+          padding: '14px 16px',
           display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          padding: '16px',
+          flexDirection: 'column',
+          gap: '12px',
+          border: '2px solid var(--ink)',
         }}
       >
-        <div
-          className="paper-card"
-          style={{
-            width: '100%',
-            maxWidth: '420px',
-            padding: '18px 20px',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '12px',
-          }}
-        >
-          <strong style={{ fontFamily: 'var(--font-display)', fontSize: '1.15rem' }}>
+          <strong style={{ fontFamily: 'var(--font-display)', fontSize: '1.1rem', wordBreak: 'break-word' }}>
             🤝 {language === 'de' ? 'Tauschangebot' : 'Trade Offer'}: {sender.name} → {receiver.name}
           </strong>
 
           <div
             style={{
               display: 'grid',
-              gridTemplateColumns: '1fr 1fr',
+              gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)',
               gap: '10px',
               background: '#fbf5e9',
               padding: '10px',
               borderRadius: '8px',
               border: '1px solid #d6c3a3',
               fontSize: '0.82rem',
+              wordBreak: 'break-word',
             }}
           >
             <div>
@@ -119,7 +111,6 @@ export const TradeModal: React.FC<TradeModalProps> = ({
             </Button>
           </div>
         </div>
-      </div>
     );
   }
 
@@ -148,45 +139,32 @@ export const TradeModal: React.FC<TradeModalProps> = ({
 
   return (
     <div
-      role="dialog"
-      aria-modal="true"
-      onClick={onClose}
+      role="region"
+      aria-label={language === 'de' ? 'Handel vorschlagen' : 'Propose Trade'}
+      className="paper-card"
       style={{
-        position: 'fixed',
-        inset: 0,
-        zIndex: 55,
-        background: 'rgba(28, 22, 16, 0.48)',
+        width: '100%',
+        boxSizing: 'border-box',
+        padding: '14px 16px',
         display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: '16px',
+        flexDirection: 'column',
+        gap: '10px',
+        border: '2px solid var(--ink)',
+        maxHeight: 'calc(100dvh - 48px)',
+        overflowY: 'auto',
       }}
     >
-      <div
-        className="paper-card"
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          width: '100%',
-          maxWidth: '520px',
-          maxHeight: '85dvh',
-          padding: '16px 18px',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '12px',
-          overflowY: 'auto',
-        }}
-      >
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <strong style={{ fontFamily: 'var(--font-display)', fontSize: '1.15rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
+          <strong style={{ fontFamily: 'var(--font-display)', fontSize: '1.1rem' }}>
             🤝 {language === 'de' ? 'Handel vorschlagen' : 'Propose Trade'}
           </strong>
-          <Button size="sm" onClick={onClose} style={{ padding: '4px 10px' }}>
+          <Button size="sm" onClick={onClose} style={{ padding: '4px 10px', flexShrink: 0 }}>
             ✕
           </Button>
         </div>
 
-        <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.86rem' }}>
-          <span>{language === 'de' ? 'Handelspartner:' : 'Partner:'}</span>
+        <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.84rem', minWidth: 0 }}>
+          <span style={{ flexShrink: 0 }}>{language === 'de' ? 'Partner:' : 'Partner:'}</span>
           <Dropdown
             value={String(effectiveToIdx)}
             onChange={(val) => {
@@ -194,6 +172,7 @@ export const TradeModal: React.FC<TradeModalProps> = ({
               setRequestProps([]);
               setRequestJailCards(0);
             }}
+            style={{ flex: 1, minWidth: 0 }}
           >
             {candidates.map((c) => (
               <option key={c.index} value={String(c.index)}>
@@ -203,20 +182,42 @@ export const TradeModal: React.FC<TradeModalProps> = ({
           </Dropdown>
         </label>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
           {/* Offer side */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '0.8rem' }}>
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '6px',
+              fontSize: '0.8rem',
+              background: '#fbf5e9',
+              padding: '10px',
+              borderRadius: '8px',
+              border: '1px solid #e2d5be',
+              minWidth: 0,
+            }}
+          >
             <strong>{fromPlayer.name} {language === 'de' ? 'bietet' : 'offers'}</strong>
-            <input
-              type="number"
-              min={0}
-              max={fromPlayer.cash}
-              step={10}
-              value={offerCash}
-              onChange={(e) => setOfferCash(Math.max(0, Number(e.target.value)))}
-              placeholder="€"
-              style={{ padding: '5px 8px', borderRadius: '6px', border: '1px solid #bfa988' }}
-            />
+            <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span style={{ color: 'var(--ink-muted)', flexShrink: 0 }}>€:</span>
+              <input
+                type="number"
+                min={0}
+                max={fromPlayer.cash}
+                step={10}
+                value={offerCash}
+                onChange={(e) => setOfferCash(Math.max(0, Number(e.target.value)))}
+                placeholder="0"
+                style={{
+                  width: '100%',
+                  minWidth: 0,
+                  boxSizing: 'border-box',
+                  padding: '5px 8px',
+                  borderRadius: '6px',
+                  border: '1px solid #bfa988',
+                }}
+              />
+            </label>
             {fromPlayer.jailCards > 0 && (
               <label style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
                 <input
@@ -227,33 +228,57 @@ export const TradeModal: React.FC<TradeModalProps> = ({
                 🎫 {language === 'de' ? 'Freikarte' : 'Excuse Card'}
               </label>
             )}
-            <div style={{ maxHeight: '140px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-              {myProps.map((t) => (
-                <label key={t.index} style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                  <input
-                    type="checkbox"
-                    checked={offerProps.includes(t.index)}
-                    onChange={() => toggleProp(offerProps, setOfferProps, t.index)}
-                  />
-                  {t.name[language]}
-                </label>
-              ))}
-            </div>
+            {myProps.length > 0 && (
+              <div style={{ maxHeight: '130px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                {myProps.map((t) => (
+                  <label key={t.index} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <input
+                      type="checkbox"
+                      checked={offerProps.includes(t.index)}
+                      onChange={() => toggleProp(offerProps, setOfferProps, t.index)}
+                    />
+                    <span style={{ wordBreak: 'break-word' }}>{t.name[language]}</span>
+                  </label>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Request side */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '0.8rem' }}>
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '6px',
+              fontSize: '0.8rem',
+              background: '#fbf5e9',
+              padding: '10px',
+              borderRadius: '8px',
+              border: '1px solid #e2d5be',
+              minWidth: 0,
+            }}
+          >
             <strong>{toPlayer.name} {language === 'de' ? 'gibt' : 'gives'}</strong>
-            <input
-              type="number"
-              min={0}
-              max={toPlayer.cash}
-              step={10}
-              value={requestCash}
-              onChange={(e) => setRequestCash(Math.max(0, Number(e.target.value)))}
-              placeholder="€"
-              style={{ padding: '5px 8px', borderRadius: '6px', border: '1px solid #bfa988' }}
-            />
+            <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span style={{ color: 'var(--ink-muted)', flexShrink: 0 }}>€:</span>
+              <input
+                type="number"
+                min={0}
+                max={toPlayer.cash}
+                step={10}
+                value={requestCash}
+                onChange={(e) => setRequestCash(Math.max(0, Number(e.target.value)))}
+                placeholder="0"
+                style={{
+                  width: '100%',
+                  minWidth: 0,
+                  boxSizing: 'border-box',
+                  padding: '5px 8px',
+                  borderRadius: '6px',
+                  border: '1px solid #bfa988',
+                }}
+              />
+            </label>
             {toPlayer.jailCards > 0 && (
               <label style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
                 <input
@@ -264,18 +289,20 @@ export const TradeModal: React.FC<TradeModalProps> = ({
                 🎫 {language === 'de' ? 'Freikarte' : 'Excuse Card'}
               </label>
             )}
-            <div style={{ maxHeight: '140px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-              {theirProps.map((t) => (
-                <label key={t.index} style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                  <input
-                    type="checkbox"
-                    checked={requestProps.includes(t.index)}
-                    onChange={() => toggleProp(requestProps, setRequestProps, t.index)}
-                  />
-                  {t.name[language]}
-                </label>
-              ))}
-            </div>
+            {theirProps.length > 0 && (
+              <div style={{ maxHeight: '130px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                {theirProps.map((t) => (
+                  <label key={t.index} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <input
+                      type="checkbox"
+                      checked={requestProps.includes(t.index)}
+                      onChange={() => toggleProp(requestProps, setRequestProps, t.index)}
+                    />
+                    <span style={{ wordBreak: 'break-word' }}>{t.name[language]}</span>
+                  </label>
+                ))}
+              </div>
+            )}
           </div>
         </div>
 
@@ -289,7 +316,6 @@ export const TradeModal: React.FC<TradeModalProps> = ({
         >
           {language === 'de' ? 'Angebot senden' : 'Send Offer'}
         </Button>
-      </div>
     </div>
   );
 };
