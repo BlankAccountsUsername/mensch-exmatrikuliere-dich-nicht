@@ -67,6 +67,7 @@ export abstract class BaseGameEngine<
 
   protected connectedSeats: number[] = [];
   protected disconnectedSeats: number[] = [];
+  protected replacedUserSeats: Set<number> = new Set();
   protected hostLobbyCode: string | null = null;
   protected hostLobbyError: string | null = null;
 
@@ -460,15 +461,16 @@ export abstract class BaseGameEngine<
       .map((p, idx) => (idx > 0 && p.active && p.seatType === 'human-remote' ? idx : -1))
       .filter((idx) => idx >= 0);
 
-    if (this.gameState) {
-      return remoteSeats;
-    }
-
     const botSeats = this.players
-      .map((p, idx) => (idx > 0 && p.active && p.seatType === 'bot' ? idx : -1))
+      .map((p, idx) => (idx > 0 && p.active && (p.seatType === 'bot' || this.replacedUserSeats.has(idx) || this.disconnectedSeats.includes(idx)) ? idx : -1))
       .filter((idx) => idx >= 0);
 
-    const candidates = [...remoteSeats, ...botSeats];
+    const candidates = Array.from(new Set([...remoteSeats, ...botSeats]));
+
+    if (this.gameState) {
+      return candidates;
+    }
+
     const hasFreeCandidate = candidates.some((idx) => !this.connectedSeats.includes(idx));
     if (!hasFreeCandidate && this.players.length < this.maxPlayers) {
       const addedIdx = this.addPlayer('human-remote');
@@ -500,7 +502,7 @@ export abstract class BaseGameEngine<
       onStatusChange: (seatIndex, connected) => {
         if (this.destroyed) return;
         if (connected) {
-          if (this.players[seatIndex] && this.players[seatIndex].seatType !== 'human-remote') {
+          if (this.players[seatIndex]) {
             this.players = this.players.map((p, idx) =>
               idx === seatIndex
                 ? {
@@ -510,6 +512,7 @@ export abstract class BaseGameEngine<
                   }
                 : p
             );
+            this.replacedUserSeats.delete(seatIndex);
           }
           if (!this.connectedSeats.includes(seatIndex)) {
             this.connectedSeats = [...this.connectedSeats, seatIndex];
@@ -525,6 +528,7 @@ export abstract class BaseGameEngine<
               kind: 'STATE_SYNC',
               state: this.sanitizeStateForSeat(this.gameState, seatIndex),
             });
+            this.scheduleBotIfNeeded();
           }
         } else {
           this.connectedSeats = this.connectedSeats.filter((s) => s !== seatIndex);
@@ -533,6 +537,24 @@ export abstract class BaseGameEngine<
           if (this.gameState) {
             if (!this.disconnectedSeats.includes(seatIndex)) {
               this.disconnectedSeats = [...this.disconnectedSeats, seatIndex];
+            }
+            if (this.players[seatIndex]?.seatType === 'human-remote') {
+              this.replacedUserSeats.add(seatIndex);
+              this.players = this.players.map((p, idx) =>
+                idx === seatIndex
+                  ? {
+                      ...p,
+                      seatType: 'bot' as const,
+                      name: DEFAULT_NAMES.bot[seatIndex] ?? p.name,
+                    }
+                  : p
+              );
+              room.broadcast({
+                kind: 'LOBBY_SYNC',
+                players: this.players,
+                settings: this.settings,
+              });
+              this.scheduleBotIfNeeded();
             }
           } else if (this.players[seatIndex]?.seatType === 'human-remote') {
             this.players = this.players.map((p, idx) =>
@@ -610,6 +632,8 @@ export abstract class BaseGameEngine<
       this.joinRoomAsGuest(saved.lastRoomCode);
     }
   };
+
+  public joinRoomAsGuest = (roomCode: string): void => {
     const cleanCode = roomCode.trim().toUpperCase();
     if (!cleanCode) return;
 
